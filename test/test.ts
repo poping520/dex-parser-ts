@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Dex, DexFile } from "../src";
+import {DexFile, parseDexFile} from "../src";
 
 const dexPath = path.resolve(__dirname, "classes.dex");
 const buf = fs.readFileSync(dexPath);
@@ -26,7 +26,7 @@ for (let i = 0; i < maxClasses; i++) {
   console.log(`classDef[${i}]=`, dex.getClassDescriptorByClassDefIdx(i));
 }
 
-const classes = Dex.parseDexFile(buf);
+const classes = parseDexFile(buf);
 console.log("parsed classes:", classes.length);
 
 for (const c of classes.slice(0, 5)) {
