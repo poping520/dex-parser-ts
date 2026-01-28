@@ -1,0 +1,21 @@
+{
+  "name": "dex-parser-ts",
+  "version": "1.0.0",
+  "description": "A TypeScript library for parsing Android DEX files",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx test/test.ts"
+  },
+  "author": "poping520",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
