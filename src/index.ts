@@ -1,30 +1,11 @@
-import {DexFile} from "./dexfile";
-import type {DexClassDef, DexHeader} from "./dexfile";
+import {DexFile} from "./dex-file";
+import type {DexClassDef, DexHeader} from "./dex-file";
+import {DexClassLoader} from "./classloader";
 
 export {DexFile};
 export type {DexHeader, DexClassDef};
+export {DexClassLoader};
 
-export interface DexMethod {
-    accessFlags: number;
-    name: string;
-    returnType: string;
-    parameterTypes: string[];
-}
-
-export interface DexField {
-    accessFlags: number;
-    name: string;
-    type: string;
-}
-
-export interface DexClass {
-    accessFlags: number;
-    name: string;
-    super: string;
-    interfaces?: string[] | null;
-    fields?: DexField[] | null;
-    methods?: DexMethod[] | null;
-}
 
 // export function parseDexFile(bytes: Uint8Array): DexClass[] {
 //     const dex = new DexFile(bytes);

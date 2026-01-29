@@ -212,7 +212,8 @@ export class DexFile {
     public readonly buffer: ByteBuffer;
     public readonly header: DexHeader;
 
-    private stringCache = new Map<number, string>();
+    private readonly stringCache = new Map<number, string>();
+    private readonly classDefIdxByDescriptorCache = new Map<string, number>();
 
     constructor(bytes: Uint8Array) {
         this.buffer = new ByteBuffer(bytes);
@@ -380,4 +381,83 @@ export class DexFile {
     //     const def = this.getClassDef(classDefIdx);
     //     return this.getTypeDescriptorByIdx(def.classIdx);
     // }
+
+    getClassData(classDef: DexClassDef): DexClassData {
+
+        const staticFieldsSize = this.buffer
+            .setPosition(classDef.classDataOff)
+            .readULeb128();
+        const instanceFieldsSize = this.buffer.readULeb128();
+        const directMethodsSize = this.buffer.readULeb128();
+        const virtualMethodsSize = this.buffer.readULeb128();
+
+        const staticFields: DexField[] = [];
+        for (let i = 0; i < staticFieldsSize; i++) {
+            staticFields.push({
+                fieldIdx: this.buffer.readULeb128(),
+                accessFlags: this.buffer.readULeb128()
+            });
+        }
+
+        const instanceFields: DexField[] = [];
+        for (let i = 0; i < instanceFieldsSize; i++) {
+            instanceFields.push({
+                fieldIdx: this.buffer.readULeb128(),
+                accessFlags: this.buffer.readULeb128()
+            });
+        }
+
+        const directMethods: DexMethod[] = [];
+        for (let i = 0; i < directMethodsSize; i++) {
+            directMethods.push({
+                methodIdx: this.buffer.readULeb128(),
+                accessFlags: this.buffer.readULeb128(),
+                codeOff: this.buffer.readULeb128()
+            });
+        }
+
+        const virtualMethods: DexMethod[] = [];
+        for (let i = 0; i < virtualMethodsSize; i++) {
+            virtualMethods.push({
+                methodIdx: this.buffer.readULeb128(),
+                accessFlags: this.buffer.readULeb128(),
+                codeOff: this.buffer.readULeb128()
+            });
+        }
+
+        return {
+            header: {
+                staticFieldsSize,
+                instanceFieldsSize,
+                directMethodsSize,
+                virtualMethodsSize,
+            },
+            staticFields: staticFields,
+            instanceFields: instanceFields,
+            directMethods: directMethods,
+            virtualMethods: virtualMethods
+        };
+    }
+
+    getClassDefByDescriptor(descriptor: string): DexClassDef | null {
+        const cachedIdx = this.classDefIdxByDescriptorCache.get(descriptor);
+        if (cachedIdx !== undefined) {
+            if (cachedIdx < 0) {
+                return null;
+            }
+            return this.getClassDef(cachedIdx);
+        }
+
+        for (let i = 0; i < this.header.classDefsSize; i++) {
+            const def = this.getClassDef(i);
+            const defDescriptor = this.getTypeDescriptorByIdx(def.classIdx);
+            if (defDescriptor === descriptor) {
+                this.classDefIdxByDescriptorCache.set(descriptor, i);
+                return def;
+            }
+        }
+
+        this.classDefIdxByDescriptorCache.set(descriptor, -1);
+        return null;
+    }
 }

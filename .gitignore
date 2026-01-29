@@ -1,4 +1,3 @@
 .idea
 node_modules
-libdex
-doc/libdex
+doc/dalvik

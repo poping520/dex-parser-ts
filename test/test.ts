@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import {DexFile, parseDexFile} from "../src";
+import {DexFile, DexClassLoader} from "../src";
 
 const dexPath = path.resolve(__dirname, "boot-okhttp.dex");
 const buf = fs.readFileSync(dexPath);
@@ -32,6 +32,14 @@ console.log("protoId[1]:", dex.getProtoId(1));
 
 const mapList = dex.getMapList();
 console.log("mapList:", mapList);
+
+const classDef = dex.getClassDef(15);
+
+const classData = dex.getClassData(classDef);
+console.log("classData:", classData);
+
+const classLoader = new DexClassLoader(dex);
+console.log("findClass:", classLoader.findClass("com.android.okhttp.OkHttpClient"));
 
 
 // const maxClasses = Math.min(10, dex.header.classDefsSize);
