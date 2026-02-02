@@ -215,6 +215,9 @@ class ByteBuffer {
     }
 }
 
+/**
+ * DEX 文件解析器：负责解析 Header、字符串表、类型表、方法/字段/类定义等结构。
+ */
 export class DexFile {
     public readonly buffer: ByteBuffer;
     public readonly header: DexHeader;
@@ -222,6 +225,10 @@ export class DexFile {
     private readonly stringCache = new Map<number, string>();
     private readonly classDefIdxByDescriptorCache = new Map<string, number>();
 
+    /**
+     * 创建并解析一个 DEX 文件。
+     * @param bytes DEX 文件的原始字节数组
+     */
     constructor(bytes: Uint8Array) {
         this.buffer = new ByteBuffer(bytes);
         this.header = this.parseHeader();
@@ -267,6 +274,9 @@ export class DexFile {
         } as DexHeader;
     }
 
+    /**
+     * 从字节数组创建 DexFile 实例。
+     */
     static from(bytes: Uint8Array): DexFile {
         return new DexFile(bytes);
     }
@@ -276,6 +286,9 @@ export class DexFile {
         return /^dex\n\d{3}\0$/.test(magic);
     }
 
+    /**
+     * 根据 stringIds 索引获取对应的 string_data_item 偏移。
+     */
     getStringDataOffset(stringIdx: number): number {
         if (stringIdx < 0 || stringIdx >= this.header.stringIdsSize) {
             throw new RangeError(`stringIdx out of range: ${stringIdx}`);
@@ -284,6 +297,9 @@ export class DexFile {
         return this.buffer.readU32At(off);
     }
 
+    /**
+     * 根据 stringIds 索引读取字符串（带缓存）。
+     */
     getStringById(stringIdx: number): string {
         const cached = this.stringCache.get(stringIdx);
         if (cached !== undefined) {
@@ -304,6 +320,9 @@ export class DexFile {
         return str;
     }
 
+    /**
+     * 根据 typeIds 索引获取类型描述符（如 "Ljava/lang/String;"）。
+     */
     getTypeDescriptorByIdx(typeIdx: number): string {
         if (typeIdx < 0 || typeIdx >= this.header.typeIdsSize) {
             throw new RangeError(`typeIdx out of range: ${typeIdx}`);
@@ -314,10 +333,16 @@ export class DexFile {
         return this.getStringById(descriptorIdx);
     }
 
+    /**
+     * 将类型描述符转换为点分格式类名（如 "java.lang.String"）。
+     */
     getClassNameByIdx(typeIdx: number): string {
         return DexUtils.descriptorToDot(this.getTypeDescriptorByIdx(typeIdx));
     }
 
+    /**
+     * 读取 proto_id_item。
+     */
     getProtoId(protoIdx: number): DexProtoId {
         if (protoIdx < 0 || protoIdx >= this.header.protoIdsSize) {
             throw new RangeError(`protoIdx out of range: ${protoIdx}`);
@@ -330,6 +355,9 @@ export class DexFile {
         return {shortyIdx, returnTypeIdx, parametersOff};
     }
 
+    /**
+     * 读取 field_id_item。
+     */
     getFieldId(fieldIdx: number): DexFieldId {
         if (fieldIdx < 0 || fieldIdx >= this.header.fieldIdsSize) {
             throw new RangeError(`fieldIdx out of range: ${fieldIdx}`);
@@ -342,6 +370,9 @@ export class DexFile {
         return {classIdx, typeIdx, nameIdx};
     }
 
+    /**
+     * 读取 method_id_item。
+     */
     getMethodId(methodIdx: number): DexMethodId {
         if (methodIdx < 0 || methodIdx >= this.header.methodIdsSize) {
             throw new RangeError(`methodIdx out of range: ${methodIdx}`);
@@ -354,6 +385,9 @@ export class DexFile {
         return {classIdx, protoIdx, nameIdx};
     }
 
+    /**
+     * 读取 class_def_item。
+     */
     getClassDef(classDefIdx: number): DexClassDef {
         if (classDefIdx < 0 || classDefIdx >= this.header.classDefsSize) {
             throw new RangeError(`classDefIdx out of range: ${classDefIdx}`);
@@ -372,6 +406,10 @@ export class DexFile {
         };
     }
 
+    /**
+     * 获取类实现的接口列表（type_list）。
+     * @returns 没有接口则返回 null
+     */
     getInterfacesList(classDef: DexClassDef): DexTypeList | null {
         if (classDef.interfacesOff === 0) {
             return null;
@@ -388,6 +426,9 @@ export class DexFile {
         }
     }
 
+    /**
+     * 解析 map_list（描述 DEX 各 section 的分布）。
+     */
     getMapList(): DexMapItem[] {
         const mapList = this.buffer.setPosition(this.header.mapOff);
         const size = mapList.readU32();
@@ -409,6 +450,10 @@ export class DexFile {
     //     return this.getTypeDescriptorByIdx(def.classIdx);
     // }
 
+    /**
+     * 通过类型描述符查找对应的 class_def_item（带缓存）。
+     * @param descriptor 形如 "Ljava/lang/String;"
+     */
     getClassDefByDescriptor(descriptor: string): DexClassDef | null {
         const cachedIdx = this.classDefIdxByDescriptorCache.get(descriptor);
         if (cachedIdx !== undefined) {
@@ -431,6 +476,9 @@ export class DexFile {
         return null;
     }
     
+    /**
+     * 解析 class_data_item（字段/方法定义，ULEB128 编码）。
+     */
     getClassData(classDef: DexClassDef): DexClassData {
 
         const staticFieldsSize = this.buffer

@@ -1,6 +1,9 @@
 import {DexFile} from "./dex-file";
 import { DexUtils } from "./utils";
 
+/**
+ * 计算 UTF-8 字符串的 31-based hash（与 Java String.hashCode 类似）。
+ */
 export function computeUtf8Hash(utf8Str: string): number {
     if (utf8Str == null) {
         throw new TypeError("utf8Str is null or undefined");
@@ -42,10 +45,17 @@ export class DexClassLoader {
 
     private readonly classCache = new Map<string, JavaClass | null>();
 
+    /**
+     * 创建一个基于 DexFile 的类加载器（带缓存）。
+     */
     constructor(dexFile: DexFile) {
         this.dexFile = dexFile;
     }
 
+    /**
+     * 查找并解析指定类。
+     * @param className 点分名（java.lang.String）或描述符（Ljava/lang/String;）
+     */
     findClass(className: string): JavaClass | null {
         const descriptor = this.normalizeToDescriptor(className);
 
