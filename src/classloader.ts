@@ -1,30 +1,5 @@
 import {DexFile} from "./dex-file";
-
-export function dotToDescriptor(str: string): string {
-    if (str == null) {
-        throw new TypeError("str is null or undefined");
-    }
-    if (str.length === 0) {
-        throw new Error("str is empty");
-    }
-
-    const wrapElSemi = str[0] !== "[";
-    const replaced = str.replace(/\./g, "/");
-    return wrapElSemi ? `L${replaced};` : replaced;
-}
-
-export function descriptorToDot(str: string): string {
-    if (str == null) {
-        throw new TypeError("str is null or undefined");
-    }
-
-    let s = str;
-    if (s.length >= 2 && s[0] === "L" && s[s.length - 1] === ";") {
-        s = s.substring(1, s.length - 1);
-    }
-
-    return s.replace(/\//g, ".");
-}
+import { DexUtils } from "./utils";
 
 export function computeUtf8Hash(utf8Str: string): number {
     if (utf8Str == null) {
@@ -85,17 +60,45 @@ export class DexClassLoader {
             return null;
         }
 
-        const NO_INDEX = 0xffffffff;
-        const superName = classDef.superclassIdx === NO_INDEX
-            ? ""
-            : this.dexFile.getTypeDescriptorByIdx(classDef.superclassIdx);
+        const superClassName = this.dexFile.getClassNameByIdx(classDef.superclassIdx);
+
+        // Interfaces
+        let interfaces = [];
+        const typeList = this.dexFile.getInterfacesList(classDef);
+        if (typeList !== null) {
+            for (let i = 0; i < typeList.size; i++) {
+                const typeIdx = typeList.typeIdxList[i];
+                const className = this.dexFile.getClassNameByIdx(typeIdx);
+                interfaces.push(className);
+            }
+        }
+
+        // Fields
+        const fields: JavaField[] = []
+        const classData = this.dexFile.getClassData(classDef);
+        let fieldIdx = 0;
+        for (const df of classData.instanceFields) {
+            fieldIdx += df.fieldIdx;
+            const fieldId = this.dexFile.getFieldId(fieldIdx);
+            const typeName = this.dexFile.getClassNameByIdx(fieldId.typeIdx);
+            const name = this.dexFile.getStringById(fieldId.nameIdx);
+
+            fields.push({
+                accessFlags: df.accessFlags,
+                name: name,
+                type: typeName
+            });
+        }
+
+        // Methods
+
 
         const cls: JavaClass = {
             accessFlags: classDef.accessFlags,
             name: className,
-            super: superName,
-            interfaces: null,
-            fields: null,
+            super: superClassName,
+            interfaces: interfaces,
+            fields: fields,
             methods: null,
         };
 
@@ -110,6 +113,6 @@ export class DexClassLoader {
         if (className.length > 1 && className[0] === "L" && className[className.length - 1] === ";") {
             return className.replace(/\./g, "/");
         }
-        return dotToDescriptor(className);
+        return DexUtils.dotToDescriptor(className);
     }
 }

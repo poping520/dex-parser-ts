@@ -1,3 +1,5 @@
+import { DexUtils } from "./utils";
+
 const kSHA1DigestLen = 20;
 
 // https://android.googlesource.com/platform/dalvik/+/refs/tags/android-4.4.4_r2.0.1/libdex/DexFile.h#216
@@ -55,6 +57,11 @@ export type DexClassDef = {
     classDataOff: number;    /* u4, file offset to class_data_item */
     staticValuesOff: number; /* u4, file offset to DexEncodedArray */
 };
+
+export interface DexTypeList {
+    size: number; /* u4 #of entries in list */
+    typeIdxList: number[]; /* u2[] entries */
+}
 
 export type DexMapItem = {
     type: number;      /* u2, type code (see kDexType* above) */
@@ -307,6 +314,10 @@ export class DexFile {
         return this.getStringById(descriptorIdx);
     }
 
+    getClassNameByIdx(typeIdx: number): string {
+        return DexUtils.descriptorToDot(this.getTypeDescriptorByIdx(typeIdx));
+    }
+
     getProtoId(protoIdx: number): DexProtoId {
         if (protoIdx < 0 || protoIdx >= this.header.protoIdsSize) {
             throw new RangeError(`protoIdx out of range: ${protoIdx}`);
@@ -361,6 +372,22 @@ export class DexFile {
         };
     }
 
+    getInterfacesList(classDef: DexClassDef): DexTypeList | null {
+        if (classDef.interfacesOff === 0) {
+            return null;
+        }
+
+        const size = this.buffer.setPosition(classDef.interfacesOff).readU32();
+        const idxList: number[] = [];
+        for (let i = 0; i < size; i++) {
+            idxList.push(this.buffer.readU16());
+        }
+        return {
+            size: size,
+            typeIdxList: idxList
+        }
+    }
+
     getMapList(): DexMapItem[] {
         const mapList = this.buffer.setPosition(this.header.mapOff);
         const size = mapList.readU32();
@@ -382,6 +409,28 @@ export class DexFile {
     //     return this.getTypeDescriptorByIdx(def.classIdx);
     // }
 
+    getClassDefByDescriptor(descriptor: string): DexClassDef | null {
+        const cachedIdx = this.classDefIdxByDescriptorCache.get(descriptor);
+        if (cachedIdx !== undefined) {
+            if (cachedIdx < 0) {
+                return null;
+            }
+            return this.getClassDef(cachedIdx);
+        }
+
+        for (let i = 0; i < this.header.classDefsSize; i++) {
+            const def = this.getClassDef(i);
+            const defDescriptor = this.getTypeDescriptorByIdx(def.classIdx);
+            if (defDescriptor === descriptor) {
+                this.classDefIdxByDescriptorCache.set(descriptor, i);
+                return def;
+            }
+        }
+
+        this.classDefIdxByDescriptorCache.set(descriptor, -1);
+        return null;
+    }
+    
     getClassData(classDef: DexClassDef): DexClassData {
 
         const staticFieldsSize = this.buffer
@@ -437,27 +486,5 @@ export class DexFile {
             directMethods: directMethods,
             virtualMethods: virtualMethods
         };
-    }
-
-    getClassDefByDescriptor(descriptor: string): DexClassDef | null {
-        const cachedIdx = this.classDefIdxByDescriptorCache.get(descriptor);
-        if (cachedIdx !== undefined) {
-            if (cachedIdx < 0) {
-                return null;
-            }
-            return this.getClassDef(cachedIdx);
-        }
-
-        for (let i = 0; i < this.header.classDefsSize; i++) {
-            const def = this.getClassDef(i);
-            const defDescriptor = this.getTypeDescriptorByIdx(def.classIdx);
-            if (defDescriptor === descriptor) {
-                this.classDefIdxByDescriptorCache.set(descriptor, i);
-                return def;
-            }
-        }
-
-        this.classDefIdxByDescriptorCache.set(descriptor, -1);
-        return null;
     }
 }
