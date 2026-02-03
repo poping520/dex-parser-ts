@@ -1,7 +1,5 @@
-import {Dexfile} from "./dexfile";
-import type {DexClassDef, DexHeader} from "./dexfile";
-import {DexClassLoader} from "./classloader";
+import { Dexfile, DexClassDef, DexHeader } from "./dexfile";
+import { DexClassLoader } from "./classloader";
+import { DexClassDumper } from "./classdump";
 
-export {Dexfile};
-export type {DexHeader, DexClassDef};
-export {DexClassLoader};
+export { Dexfile, DexHeader, DexClassDef, DexClassLoader, DexClassDumper };

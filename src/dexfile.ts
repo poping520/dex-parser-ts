@@ -102,6 +102,42 @@ export interface DexClassData {
     virtualMethods: DexMethod[];
 }
 
+export enum DexAccessFlag {
+    Public                  = 0x00000001,
+    Private                 = 0x00000002,
+    Protected               = 0x00000004,
+    Static                  = 0x00000008,
+    Final                   = 0x00000010,
+    Synchronized            = 0x00000020,
+    Super                   = 0x00000020,       // class (not used in Dalvik)
+    Volatile                = 0x00000040,
+    Bridge                  = 0x00000040,       // method (1.5)
+    Transient               = 0x00000080,
+    Varargs                 = 0x00000080,       // method (1.5)
+    Native                  = 0x00000100,
+    Interface               = 0x00000200,
+    Abstract                = 0x00000400,
+    Strict                  = 0x00000800,
+    Synthetic               = 0x00001000,
+    Annotation              = 0x00002000,
+    Enum                    = 0x00004000,
+    Constructor             = 0x00010000,
+    DeclaredSynchronized    = 0x00020000,
+
+    ClassMask               = (Public | Final | Interface | Abstract 
+                                | Synthetic | Annotation | Enum),
+
+    InnerClassMask          = (ClassMask | Private | Protected | Static),
+
+    FieldMask               = (Public | Private | Protected | Static | Final 
+                                | Volatile | Transient | Synthetic | Enum),
+
+    MethodMask              = (Public | Private | Protected | Static | Final 
+                                | Synchronized | Bridge | Varargs | Native
+                                | Abstract | Strict | Synthetic | Constructor 
+                                | DeclaredSynchronized)
+}
+
 class ByteBuffer {
     public readonly bytes: Uint8Array;
     private readonly view: DataView;
@@ -336,7 +372,7 @@ export class Dexfile {
      * 将类型描述符转换为点分格式类名（如 "java.lang.String"）。
      */
     getClassNameByIdx(typeIdx: number): string {
-        return DexUtils.descriptorToDot(this.getTypeDescriptorByIdx(typeIdx));
+        return DexUtils.descriptorToJavaType(this.getTypeDescriptorByIdx(typeIdx));
     }
 
     getTypeListByOff(off: number): DexTypeList {

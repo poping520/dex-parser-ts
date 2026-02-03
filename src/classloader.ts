@@ -1,49 +1,49 @@
 import { Dexfile, DexField, DexMethod } from "./dexfile";
 import { DexUtils } from "./utils";
 
-/**
- * 计算 UTF-8 字符串的 31-based hash（与 Java String.hashCode 类似）。
- */
-export function computeUtf8Hash(utf8Str: string): number {
-    if (utf8Str == null) {
-        throw new TypeError("utf8Str is null or undefined");
-    }
-
-    const bytes = new TextEncoder().encode(utf8Str);
-    let hash = 1 >>> 0;
-    for (let i = 0; i < bytes.length; i++) {
-        hash = (hash * 31 + bytes[i]) >>> 0;
-    }
-    return hash;
-}
-
-export interface JavaMethod {
+export interface JavaMethodT<TType> {
     accessFlags: number;
     name: string;
-    returnType: string;
-    parameterTypes: string[];
+    returnType: TType;
+    parameterTypes: TType[];
 }
 
-export interface JavaField {
+export interface JavaFieldT<TType> {
     accessFlags: number;
     name: string;
-    type: string;
+    type: TType;
 }
 
-export interface JavaClass {
+export interface JavaClassT<TType> {
+    stub: boolean;       // 如果一个类不在当前的 Dex 中，则 stub 为 true
     accessFlags: number;
     name: string;
-    super: string;
-    interfaces?: string[] | null;
-    fields?: JavaField[] | null;
-    methods?: JavaMethod[] | null;
+    super?: TType | null;
+    interfaces: TType[];
+    fields: JavaFieldT<TType>[];
+    methods: JavaMethodT<TType>[];
 }
+
+export type JavaClassRaw = JavaClassT<string>;
+
+export type JavaMethodRaw = JavaMethodT<string>;
+
+export type JavaFieldRaw = JavaFieldT<string>;
+
+export type JavaClassResolved = JavaClassT<JavaClassResolved>;
+
+export type JavaMethodResolved = JavaMethodT<JavaClassResolved>;
+
+export type JavaFieldResolved = JavaFieldT<JavaClassResolved>;
+
 
 export class DexClassLoader {
 
     private readonly dexFile: Dexfile;
 
-    private readonly classCache = new Map<string, JavaClass | null>();
+    private readonly rawClassCache = new Map<string, JavaClassRaw | null>();
+
+    private readonly resolvedClassCache = new Map<string, JavaClassResolved | null>();
 
     /**
      * 创建一个基于 DexFile 的类加载器（带缓存）。
@@ -56,66 +56,123 @@ export class DexClassLoader {
      * 查找并解析指定类。
      * @param className 点分名（java.lang.String）或描述符（Ljava/lang/String;）
      */
-    findClass(className: string): JavaClass | null {
-        const descriptor = this.normalizeToDescriptor(className);
+    findClass(className: string): JavaClassRaw | null;
+    findClass(className: string, options: { resolveRefs: true }): JavaClassResolved | null;
+    findClass(className: string, options?: { resolveRefs?: boolean }): JavaClassRaw | JavaClassResolved | null {
+        if (options?.resolveRefs) {
+            return this.findClassResolved(className);
+        }
+        return this.findClassRaw(className);
+    }
 
-        const cached = this.classCache.get(descriptor);
+    findClassRaw(className: string): JavaClassRaw | null {
+        const cached = this.rawClassCache.get(className);
         if (cached !== undefined) {
             return cached;
         }
 
-        const classDef = this.dexFile.getClassDefByDescriptor(descriptor);
+        const classDef = this.dexFile.getClassDefByDescriptor(this.normalizeToDescriptor(className));
         if (!classDef) {
-            this.classCache.set(descriptor, null);
+            this.rawClassCache.set(className, null);
             return null;
         }
 
-        const superClassName = this.dexFile.getClassNameByIdx(classDef.superclassIdx);
+        const NO_INDEX = 0xffffffff;
+        const superClassName = classDef.superclassIdx === NO_INDEX
+                ? "java.lang.Object"
+                : this.dexFile.getClassNameByIdx(classDef.superclassIdx);
 
         // Interfaces
-        let interfaces = [];
+        const interfaces: string[] = [];
         const typeList = this.dexFile.getInterfacesList(classDef);
         if (typeList !== null) {
             for (let i = 0; i < typeList.size; i++) {
                 const typeIdx = typeList.typeIdxList[i];
-                const className = this.dexFile.getClassNameByIdx(typeIdx);
-                interfaces.push(className);
+                const ifaceName = this.dexFile.getClassNameByIdx(typeIdx);
+                interfaces.push(ifaceName);
             }
         }
 
-        const classData = this.dexFile.getClassData(classDef);
+        let fields: JavaFieldRaw[] = [];
+        let methods: JavaMethodRaw[] = [];
 
-        // Fields
-        const fields: JavaField[] = [];
-        this.parseDexFields(classData.instanceFields, fields);
-        this.parseDexFields(classData.staticFields, fields);
+        if (classDef.classDataOff !== 0) {
+            const classData = this.dexFile.getClassData(classDef);
 
-        // Methods
-        const methods: JavaMethod[] = [];
-        this.parseDexMethods(classData.directMethods, methods);
-        this.parseDexMethods(classData.virtualMethods, methods);
+            // Fields
+            fields = [];
+            this.parseDexFields(classData.instanceFields, fields);
+            this.parseDexFields(classData.staticFields, fields);
 
-        const cls: JavaClass = {
+            // Methods
+            methods = [];
+            this.parseDexMethods(classData.directMethods, methods);
+            this.parseDexMethods(classData.virtualMethods, methods);
+        }
+
+        const cls: JavaClassRaw = {
+            stub: false,
             accessFlags: classDef.accessFlags,
             name: className,
             super: superClassName,
             interfaces: interfaces,
             fields: fields,
-            methods: methods,
+            methods: methods
         };
 
-        this.classCache.set(descriptor, cls);
+        this.rawClassCache.set(className, cls);
         return cls;
     }
 
-    private parseDexFields(dexFields: DexField[], out: JavaField[]): void {
+    findClassResolved(className: string): JavaClassResolved | null {
+        const cached = this.resolvedClassCache.get(className);
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const raw = this.findClassRaw(className);
+        if (!raw) {
+            return null;
+        }
+
+        const resolved: JavaClassResolved = {
+            stub: false,
+            accessFlags: raw.accessFlags,
+            name: className,
+            super: null,
+            interfaces: [],
+            fields: [],
+            methods: []
+        };
+
+        // Insert early to break cycles (e.g. self-referential or mutually-referential classes)
+        this.resolvedClassCache.set(className, resolved);
+        if (raw.super !== null) {
+            resolved.super = this.resolveTypeRef(raw.super!);
+        }
+        resolved.interfaces = raw.interfaces.map((i) => this.resolveTypeRef(i));
+        resolved.fields = raw.fields.map((f) => ({
+            accessFlags: f.accessFlags,
+            name: f.name,
+            type: this.resolveTypeRef(f.type)
+        }));
+        resolved.methods = raw.methods.map((m) => ({
+            accessFlags: m.accessFlags,
+            name: m.name,
+            returnType: this.resolveTypeRef(m.returnType),
+            parameterTypes: m.parameterTypes.map((p) => this.resolveTypeRef(p))
+        }));
+
+        return resolved;
+    }
+
+    private parseDexFields(dexFields: DexField[], out: JavaFieldRaw[]): void {
         let fieldIdx = 0;
         for (const df of dexFields) {
             fieldIdx += df.fieldIdx;
             const fieldId = this.dexFile.getFieldId(fieldIdx);
             const type = this.dexFile.getClassNameByIdx(fieldId.typeIdx);
             const name = this.dexFile.getStringById(fieldId.nameIdx);
-
             out.push({
                 accessFlags: df.accessFlags,
                 name,
@@ -124,7 +181,7 @@ export class DexClassLoader {
         }
     }
 
-    private parseDexMethods(dexMethods: DexMethod[], out: JavaMethod[]): void {
+    private parseDexMethods(dexMethods: DexMethod[], out: JavaMethodRaw[]): void {
         let methodIdx = 0;
         for (const dm of dexMethods) {
             methodIdx += dm.methodIdx;
@@ -162,6 +219,23 @@ export class DexClassLoader {
             return className.replace(/\./g, "/");
         }
         return DexUtils.dotToDescriptor(className);
+    }
+
+    private resolveTypeRef(className: string): JavaClassResolved {
+        let ret = this.findClassResolved(className);
+
+        if (ret == null) {
+            ret = {
+                stub: true,
+                accessFlags: 0,
+                name: className,
+                interfaces: [],
+                fields: [],
+                methods: []
+            }
+            this.resolvedClassCache.set(className, ret);
+        }
+        return ret;
     }
 }
 
