@@ -1,0 +1,11 @@
+doc/
+src/
+test/
+
+*.tsbuildinfo
+*.log
+
+.vscode/
+.idea/
+
+node_modules/

@@ -33,7 +33,7 @@ export interface DexFieldId {
     classIdx: number; /* u2, index into typeIds list for defining class */
     typeIdx: number;  /* u2, index into typeIds for field type */
     nameIdx: number;  /* u4, index into stringIds for field name */
-};
+}
 
 export interface DexMethodId {
     classIdx: number; /* u2, index into typeIds list for defining class */
@@ -124,18 +124,18 @@ export enum DexAccessFlag {
     Constructor             = 0x00010000,
     DeclaredSynchronized    = 0x00020000,
 
-    ClassMask               = (Public | Final | Interface | Abstract 
-                                | Synthetic | Annotation | Enum),
+    ClassMask               = (Public | Final | Interface | Abstract
+        | Synthetic | Annotation | Enum),
 
     InnerClassMask          = (ClassMask | Private | Protected | Static),
 
-    FieldMask               = (Public | Private | Protected | Static | Final 
-                                | Volatile | Transient | Synthetic | Enum),
+    FieldMask               = (Public | Private | Protected | Static | Final
+        | Volatile | Transient | Synthetic | Enum),
 
-    MethodMask              = (Public | Private | Protected | Static | Final 
-                                | Synchronized | Bridge | Varargs | Native
-                                | Abstract | Strict | Synthetic | Constructor 
-                                | DeclaredSynchronized)
+    MethodMask              = (Public | Private | Protected | Static | Final
+        | Synchronized | Bridge | Varargs | Native
+        | Abstract | Strict | Synthetic | Constructor
+        | DeclaredSynchronized)
 }
 
 class ByteBuffer {
@@ -253,7 +253,7 @@ class ByteBuffer {
 /**
  * DEX 文件解析器：负责解析 Header、字符串表、类型表、方法/字段/类定义等结构。
  */
-export class Dexfile {
+export class DexFile {
     public readonly buffer: ByteBuffer;
     public readonly header: DexHeader;
 
@@ -310,10 +310,10 @@ export class Dexfile {
     }
 
     /**
-     * 从字节数组创建 DexFile 实例。
+     * 从字节数组创建 Dexfile 实例。
      */
-    static from(bytes: Uint8Array): Dexfile {
-        return new Dexfile(bytes);
+    static from(bytes: Uint8Array): DexFile {
+        return new DexFile(bytes);
     }
 
     private hasValidMagic(magic: string): boolean {
@@ -384,7 +384,7 @@ export class Dexfile {
         return {
             size: size,
             typeIdxList: idxList
-        }   
+        }
     }
 
     /**
@@ -513,7 +513,7 @@ export class Dexfile {
         this.classDefIdxByDescriptorCache.set(descriptor, -1);
         return null;
     }
-    
+
     /**
      * 解析 class_data_item（字段/方法定义，ULEB128 编码）。
      */

@@ -4,17 +4,29 @@
   "description": "A TypeScript library for parsing Android DEX files",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist",
+    "build": "npm run clean && tsup",
+    "watch": "tsup --watch",
+    "prepare": "npm run build",
     "test": "tsx test/test.ts"
   },
   "author": "poping520",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.10.7",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.0.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }

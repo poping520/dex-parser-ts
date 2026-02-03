@@ -107,7 +107,7 @@ Header
 
 > 本项目目前的实现：对常见文本按 UTF-8 解码通常可用，但严格来说 DEX 使用的是 **MUTF-8**。
 
-## 5. 基于字符串之上的常见解析（你会在调试时频繁用到）
+## 5. 基于字符串之上的常见解析
 
 ### 5.1 解析类型描述符（type descriptor）
 
@@ -129,6 +129,8 @@ Header
 - `field_id`：`(class_idx -> type)` + `(type_idx -> type)` + `(name_idx -> string)`
 - `method_id`：`(class_idx -> type)` + `(proto_idx -> proto)` + `(name_idx -> string)`
 
+调试时的经验：很多“看不懂的数字索引”，最终都会落到 `string_ids`（人类可读文本）或 `type_ids`（类型描述符字符串）。当你把索引逐层解引用到 string 后，结构就会清晰很多。
+
 ### 5.3 解析方法原型（proto_id）
 
 `proto_id` 给出三块信息：
@@ -137,19 +139,53 @@ Header
 - `parametersOff`：偏移到 data 区某个 `type_list`（参数类型列表）
 - `shortyIdx`：索引到 `string_ids`（shorty 描述符字符串）
 
-## 6. 本项目当前覆盖的解析范围（快速对照）
+一个把 `methodIdx` 还原成“可读签名”的思路（伪代码）：
 
-当前项目已具备以下“表”级别的读取能力：
+```ts
+// 1) method_id_item
+//   - class_idx: type_idx
+//   - proto_idx: proto_idx
+//   - name_idx:  string_idx
+// 2) proto_id_item
+//   - return_type_idx: type_idx
+//   - parameters_off:  type_list_off (0 means empty)
+// 3) type_idx -> type_ids[type_idx].descriptor_idx -> string_ids[descriptor_idx] -> descriptor string
+// 4) string_idx -> string_ids[string_idx] -> string_data_item -> string
 
-- Header
-- `string_ids` / string 读取
-- `type_ids`（类型描述符）
-- `proto_ids`
-- `field_ids`
-- `method_ids`
-- `class_defs`（类定义条目本身）
+// signature = <declaringClass>.<name>(<paramTypes...>): <returnType>
+```
 
-如果你后续要继续深入到“方法体/指令级别”的解析，重点会落在：
+### 5.4 解析类定义（class_def_item）到“可读类名”
 
-- `class_data_item`（encoded_method / code_off）
-- `code_item`（registers/insns/debug_info_off/tries/handlers 等）
+`class_def_item` 自身依然是索引集合（很多字段最终都会落到 string/type 上）：
+
+- `classIdx`：这个类自己的类型（type_idx）
+- `superclassIdx`：父类类型（type_idx），特殊值 `0xffffffff` 表示无父类（通常当作 `java.lang.Object`）
+- `interfacesOff`：接口列表 `type_list` 的偏移（可能为 0）
+- `sourceFileIdx`：源文件名（string_idx），可能为 `0xffffffff`
+
+常见还原目标：
+
+- 类名：`classIdx (type_idx)` -> `type_ids` -> `string_ids` -> descriptor -> 进一步转成点分格式
+- 父类名：`superclassIdx (type_idx)` 同上（特殊值 `0xffffffff`）
+- 接口列表：`interfacesOff` 指向 `type_list`，逐个 `type_idx` 走 type 解引用
+- 源文件名：`sourceFileIdx (string_idx)` 走 string 解引用（特殊值 `0xffffffff`）
+
+### 5.5 从 class_data_item 还原字段/方法列表（索引增量编码）
+
+`class_data_item`（即 `DexClassDef.classDataOff` 指向的数据）存储了：
+
+- staticFields / instanceFields
+- directMethods / virtualMethods
+
+这里有一个非常关键的点：`encoded_field.field_idx_diff` / `encoded_method.method_idx_diff` 是**增量（diff）编码**，不是绝对索引。
+
+还原方式（要点）：
+
+- 读取每个 encoded_field / encoded_method 时，先维护一个累计的 `field_idx` / `method_idx`
+- 对每一项：
+  - `field_idx += field_idx_diff`
+  - `method_idx += method_idx_diff`
+- 然后用得到的绝对 `field_idx` / `method_idx` 去 `field_ids` / `method_ids` 表中读取条目
+
+调试建议：当你看到某个类“字段/方法数量不对”时，优先检查是否正确处理了 diff 累加。

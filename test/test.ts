@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Dexfile, DexClassLoader, DexClassDumper } from "../src";
+import { DexFile, DexClassLoader, DexClassDumper } from "../src";
 
 const dexPath = path.resolve(__dirname, "boot-okhttp.dex");
 const buf = fs.readFileSync(dexPath);
 
-const dex = new Dexfile(buf);
+const dex = new DexFile(buf);
 
 console.log("magic:", dex.header.magic);
 console.log("fileSize:", dex.header.fileSize);
@@ -39,7 +39,6 @@ const classData = dex.getClassData(classDef);
 console.log("classData:", classData);
 
 const classLoader = new DexClassLoader(dex);
-const javaClass = classLoader.findClassResolved("com.android.okhttp.OkHttpClient")
+const javaClass = classLoader.findClassResolved("com.android.okhttp.Response")
 
 console.log(javaClass);
-

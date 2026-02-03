@@ -1,4 +1,4 @@
-import { Dexfile, DexField, DexMethod } from "./dexfile";
+import { DexFile, DexField, DexMethod } from "./dexfile";
 import { DexUtils } from "./utils";
 
 export interface JavaMethodT<TType> {
@@ -18,7 +18,7 @@ export interface JavaClassT<TType> {
     stub: boolean;       // 如果一个类不在当前的 Dex 中，则 stub 为 true
     accessFlags: number;
     name: string;
-    super?: TType | null;
+    super: TType | null;
     interfaces: TType[];
     fields: JavaFieldT<TType>[];
     methods: JavaMethodT<TType>[];
@@ -39,22 +39,22 @@ export type JavaFieldResolved = JavaFieldT<JavaClassResolved>;
 
 export class DexClassLoader {
 
-    private readonly dexFile: Dexfile;
+    private readonly dexFile: DexFile;
 
     private readonly rawClassCache = new Map<string, JavaClassRaw | null>();
 
     private readonly resolvedClassCache = new Map<string, JavaClassResolved | null>();
 
     /**
-     * 创建一个基于 DexFile 的类加载器（带缓存）。
+     * 创建一个基于 Dexfile 的类加载器（带缓存）。
      */
-    constructor(dexFile: Dexfile) {
+    constructor(dexFile: DexFile) {
         this.dexFile = dexFile;
     }
 
     /**
      * 查找并解析指定类。
-     * @param className 点分名（java.lang.String）或描述符（Ljava/lang/String;）
+     * @param className java.lang.String
      */
     findClass(className: string): JavaClassRaw | null;
     findClass(className: string, options: { resolveRefs: true }): JavaClassResolved | null;
@@ -229,6 +229,7 @@ export class DexClassLoader {
                 stub: true,
                 accessFlags: 0,
                 name: className,
+                super: null,
                 interfaces: [],
                 fields: [],
                 methods: []
