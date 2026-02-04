@@ -1,4 +1,4 @@
-# dex-parser-ts
+# libdex-ts
 
 这是一个用于解析 Android DEX 文件的 TypeScript 库，提供：
 
@@ -9,13 +9,13 @@
 ## 安装
 
 ```bash
-npm i dex-parser-ts
+npm i libdex-ts
 ```
 
 ## 快速使用
 
 ```ts
-import { DexFile, DexClassLoader, DexClassDumper } from "dex-parser-ts";
+import { DexFile, DexClassLoader, DexClassDumper } from "libdex-ts";
 import { readFileSync } from "node:fs";
 
 const bytes = new Uint8Array(readFileSync("classes.dex"));

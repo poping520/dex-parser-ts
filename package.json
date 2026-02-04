@@ -1,5 +1,5 @@
 {
-  "name": "dex-parser-ts",
+  "name": "libdex-ts",
   "version": "1.0.0",
   "description": "A TypeScript library for parsing Android DEX files",
   "main": "dist/index.js",
