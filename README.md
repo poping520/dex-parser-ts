@@ -2,7 +2,7 @@
 
 这是一个用于解析 Android DEX 文件的 TypeScript 库，提供：
 
-- 读取并解析 DEX Header / string_ids / type_ids / proto_ids / field_ids / method_ids / class_defs 等结构
+- 读取并解析 DEX Header / xxx_ids / class_defs / class_data_item / code_item 等结构
 - 基于解析结果进行简单的“类视图”抽象（字段/方法/继承/接口）
 - 将类信息以接近 Java 语法的文本形式 dump 输出
 
@@ -19,13 +19,26 @@ import { DexFile, DexClassLoader, DexClassDumper } from "libdex-ts";
 import { readFileSync } from "node:fs";
 
 const bytes = new Uint8Array(readFileSync("classes.dex"));
-const dex = new DexFile(bytes);
 
+// DexFile
+const dex = new DexFile(bytes);
+const clsDef = dex.getClassDefByDescriptor("Lcom/foo/FooClass;");
+if (clsDef) {
+  const classData = dex.getClassData(clsDef);
+  const method = classData.directMethods[0];
+  const code = dex.getDexCode(method);
+  // ...
+}
+
+// ClassLoader
 const loader = new DexClassLoader(dex);
 const cls = loader.findClass("com.foo.FooClass");
 if (cls) {
-  console.log(DexClassDumper.dump(cls));
+  // ClassDumper
+  const dumpStr = DexClassDumper.dump(cls);
+  console.log(dumpStr);
 }
+
 ```
 
 ## API 概览
@@ -66,6 +79,10 @@ if (cls) {
   - 通过 descriptor 查找类定义（例如 `Ljava/lang/String;`）
 - `dex.getClassData(classDef: DexClassDef): DexClassData`
   - 读取 `class_data_item`（字段/方法定义，ULEB128 编码）
+- `dex.getDexCode(dexMethod: DexMethod): DexCode | null`
+  - 读取 `code_item`（寄存器/参数/指令序列/try-catch handlers 等）
+- `dex.getDexDebugInfo(dexCode: DexCode): DexDebugInfo`
+  - 读取并解码 `debug_info_item`（positions/locals/sourceFile 等）
 
 ### DexClassLoader
 

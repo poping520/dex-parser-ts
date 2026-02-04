@@ -189,3 +189,97 @@ Header
 - 然后用得到的绝对 `field_idx` / `method_idx` 去 `field_ids` / `method_ids` 表中读取条目
 
 调试建议：当你看到某个类“字段/方法数量不对”时，优先检查是否正确处理了 diff 累加。
+
+## 6. 从方法定义走到字节码：code_item
+
+大多数进一步的分析（反汇编、控制流、异常处理、调试信息）都依赖 `code_item`。
+
+解析入口通常来自：
+
+- `class_def_item.class_data_off` -> `class_data_item`
+- `class_data_item` 内的 `encoded_method.code_off` -> `code_item`
+
+### 6.1 code_item 的头部
+
+`code_item` 的头部字段是定长的：
+
+- `registers_size`：寄存器数量
+- `ins_size`：入参寄存器数量
+- `outs_size`：调用其它方法时的参数寄存器数量
+- `tries_size`：`try_item` 条目数
+- `debug_info_off`：调试信息偏移（0 表示无）
+- `insns_size`：指令数组长度（以 `u2` 为单位）
+
+随后是 `insns[insns_size]`，即 Dalvik 指令流（每个元素为 16-bit code unit）。
+
+### 6.2 try-catch 与对齐填充
+
+如果 `tries_size > 0`，那么 `insns` 后面会跟异常处理相关的数据。需要注意一个容易踩坑的规则：
+
+- `try_item` 结构要求 32-bit 对齐
+- 因此当 `insns_size` 为奇数时，`insns` 末尾会有一个额外的 `u2 padding` 用于对齐
+
+之后依次是：
+
+- `try_item[tries_size]`
+- `encoded_catch_handler_list`
+
+### 6.3 try_item
+
+每个 `try_item` 描述一个 try 的覆盖范围以及其异常处理入口：
+
+- `start_addr`：起始地址（以 16-bit code unit 计）
+- `insn_count`：覆盖长度（同样以 16-bit code unit 计）
+- `handler_off`：指向 `encoded_catch_handler_list` 内某个 handler 的偏移
+
+`handler_off` 的基准是 `encoded_catch_handler_list` 起始处（即其 `size` 字段的起点），不是 `insns` 的起点。
+
+### 6.4 encoded_catch_handler_list / encoded_catch_handler
+
+异常处理器列表采用 LEB128 编码，结构为：
+
+- `uleb128 size`：handler 列表数量
+- 重复 `size` 次：`encoded_catch_handler`
+
+每个 `encoded_catch_handler`：
+
+- `sleb128 size`
+  - `size > 0`：有 `size` 个 `type_addr_pair`，且没有 catch-all
+  - `size <= 0`：有 `-size` 个 `type_addr_pair`，并且末尾额外有一个 `catch_all_addr`
+- `type_addr_pair[]`：每个由
+  - `uleb128 type_idx`（异常类型索引）
+  - `uleb128 addr`（处理器入口地址）
+- 可选的 `catch_all_addr`：用于匹配任意异常类型
+
+解析时常见做法是：先把 `encoded_catch_handler_list` 里的各个 handler 的起始偏移记录下来，之后用 `try_item.handler_off` 去匹配。
+
+## 7. debug_info_item：位置表与局部变量表
+
+`debug_info_item` 用于把指令地址映射到源码行号，并描述某些寄存器在特定范围内对应的局部变量。
+
+### 7.1 头部
+
+debug info 由“头部 + opcode 流”构成：
+
+- `uleb128 line_start`
+- `uleb128 parameters_size`
+- `uleb128p1 parameter_names[parameters_size]`
+  - 这里的索引是“+1 编码”：0 表示无名称，否则真实索引为 `n-1`
+- `u1 opcodes[]`
+
+### 7.2 opcode 流（概念）
+
+解析器通常维护两个状态变量：
+
+- `address`：当前指令地址（以 16-bit code unit 计）
+- `line`：当前行号
+
+常见 opcode（只描述语义，不展开全部细节）：
+
+- `DBG_ADVANCE_PC`：`address += uleb128`
+- `DBG_ADVANCE_LINE`：`line += sleb128`
+- `DBG_START_LOCAL` / `DBG_END_LOCAL` / `DBG_RESTART_LOCAL`：开始/结束/恢复某寄存器上的局部变量
+- `DBG_SET_FILE`：设置源文件名
+- special opcode：同时调整 `address` 与 `line`，并产生一个“位置表项（position entry）”
+
+注意：局部变量的描述是“寄存器在某个范围内代表哪个变量”，因此解析时需要维护每个寄存器的 live 状态，并在变量结束时生成一个区间（start/end address）。

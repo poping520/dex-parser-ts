@@ -92,13 +92,9 @@ export namespace DexUtils {
         const isInterface = (accessFlags & DexAccessFlag.Interface) !== 0;
         const isEnum = (accessFlags & DexAccessFlag.Enum) !== 0;
 
-        if (accessFlags & DexAccessFlag.Public) {
-            mods.push("public");
-        } else if (accessFlags & DexAccessFlag.Protected) {
-            mods.push("protected");
-        } else if (accessFlags & DexAccessFlag.Private) {
-            mods.push("private");
-        }
+        if (accessFlags & DexAccessFlag.Public)  mods.push("public");
+        else if (accessFlags & DexAccessFlag.Protected) mods.push("protected");
+        else if (accessFlags & DexAccessFlag.Private) mods.push("private");
 
         if (accessFlags & DexAccessFlag.Abstract) {
             if (!(kind === "class" && isInterface)) {

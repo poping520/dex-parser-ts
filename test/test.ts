@@ -1,44 +1,60 @@
 import fs from "node:fs";
 import path from "node:path";
-import { DexFile, DexClassLoader, DexClassDumper } from "../src";
+
+import {DexFile} from "../src/dexfile";
+import {DexClassLoader} from "../src/classloader";
+import {DexClassDumper} from "../src/classdump";
+
 
 const dexPath = path.resolve(__dirname, "boot-okhttp.dex");
 const buf = fs.readFileSync(dexPath);
 
 const dex = new DexFile(buf);
+const loader = new DexClassLoader(dex);
 
-console.log("magic:", dex.header.magic);
-console.log("fileSize:", dex.header.fileSize);
-console.log("stringIds:", dex.header.stringIdsSize);
-console.log("typeIds:", dex.header.typeIdsSize);
-console.log("protoIds:", dex.header.protoIdsSize);
-console.log("fieldIds:", dex.header.fieldIdsSize);
-console.log("methodIds:", dex.header.methodIdsSize);
-console.log("classDefs:", dex.header.classDefsSize);
-
-
-const maxStrings = Math.min(10, dex.header.stringIdsSize);
-for (let i = 0; i < maxStrings; i++) {
-    console.log(`string[${i}]=`, dex.getStringById(i));
+function testDexHeader() {
+    console.log("magic:", dex.header.magic);
+    console.log("fileSize:", dex.header.fileSize);
+    console.log("stringIds:", dex.header.stringIdsSize);
+    console.log("typeIds:", dex.header.typeIdsSize);
+    console.log("protoIds:", dex.header.protoIdsSize);
+    console.log("fieldIds:", dex.header.fieldIdsSize);
+    console.log("methodIds:", dex.header.methodIdsSize);
+    console.log("classDefs:", dex.header.classDefsSize);
 }
 
-const maxTypes = Math.min(10, dex.header.typeIdsSize);
-for (let i = 0; i < maxTypes; i++) {
-    console.log(`type[${i}]=`, dex.getTypeDescriptorByIdx(i));
+function testDexCode() {
+    const classDef = dex.getClassDefByDescriptor("Lcom/android/okhttp/Connection;")
+    const classData = dex.getClassData(classDef!);
+
+    // public boolean com.android.okhttp.Connection.isReadable()
+    const method = classData.virtualMethods[11];
+    const code = dex.getDexCode(method);
+    console.log("code:", code);
+
+    const debugInfo = dex.getDexDebugInfo(code!);
+    console.log("debugInfo:", debugInfo);
 }
 
-console.log("protoId[0]:", dex.getProtoId(0));
-console.log("protoId[1]:", dex.getProtoId(1));
+function testClassLoder() {
+    const cls = loader.findClass("com.android.okhttp.Request");
+    console.log("class:", cls);
 
-const mapList = dex.getMapList();
-console.log("mapList:", mapList);
+    const cls2 = loader.findClassResolved("com.android.okhttp.Request")
+    console.log("class2: ", cls2);
+}
 
-const classDef = dex.getClassDef(15);
+function testClassDump() {
 
-const classData = dex.getClassData(classDef);
-console.log("classData:", classData);
+    const cls = loader.findClass("com.android.okhttp.Request");
+    const cls2 = loader.findClassResolved("com.android.okhttp.Request")
 
-const classLoader = new DexClassLoader(dex);
-const javaClass = classLoader.findClassResolved("com.android.okhttp.Response")
+    let code1 = DexClassDumper.dump(cls!);
+    let code2 = DexClassDumper.dump(cls2!);
 
-console.log(javaClass);
+    console.log(code1)
+    console.log(code2)
+}
+
+// testDexCode();
+testClassDump();

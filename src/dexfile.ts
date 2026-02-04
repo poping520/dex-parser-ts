@@ -70,30 +70,111 @@ export interface DexMapItem {
     offset: number;    /* u4, file offset to the start of data */
 }
 
+// try_item
+export interface DexTry {
+    startAddr: number;      // u4    try 范围起始地址
+    insnCount: number;      // u2    try 范围指令数量
+    handlerOff: number;     // u2    try 处理器偏移量
+}
+
+// type_addr_pair
+export interface DexTypeAddrPair {
+    typeIdx: number;    // uleb128  捕获异常类型的 typeIds 索引
+    address: number;    // uleb128  handler 入口地址（以 16-bit code unit 为单位）
+}
+
+// encoded_catch_handler
+export interface DexEncodedCatchHandler {
+    offset: number;                 // 相对于 encoded_catch_handler_list 起点的偏移；与 try_item.handlerOff 对应
+    catchesAll: boolean;            // size<=0 时为 true，表示存在 catch_all_addr
+    handlers: DexTypeAddrPair[];    // type_addr_pair[]，数量为 abs(size)
+    catchAllAddr: number | null;    // uleb128  catch_all_addr；不存在则为 null
+}
+
+export interface DexDebugPosition {
+    address: number;    // 指令地址（以 16-bit code unit 为单位）
+    line: number;       // 源代码行号
+}
+
+export interface DexDebugLocal {
+    reg: number;
+    startAddress: number;
+    endAddress: number;
+    name: string | null;
+    descriptor: string | null;
+    signature: string | null;
+}
+
+export interface DexDebugInfo {
+    lineStart: number;
+    parametersSize: number;
+    parameterNames: Array<string | null>;
+    positions: DexDebugPosition[];
+    locals: DexDebugLocal[];
+    sourceFile: string | null;
+    prologueEndAddresses: number[];
+    epilogueBeginAddresses: number[];
+}
+
+export enum DexDebugOpcode {
+    EndSequence = 0x00,
+    AdvancePc = 0x01,
+    AdvanceLine = 0x02,
+    StartLocal = 0x03,
+    StartLocalExtended = 0x04,
+    EndLocal = 0x05,
+    RestartLocal = 0x06,
+    SetPrologueEnd = 0x07,
+    SetEpilogueBegin = 0x08,
+    SetFile = 0x09,
+    FirstSpecial = 0x0a,
+}
+
+export const DBG_LINE_BASE = -4;
+export const DBG_LINE_RANGE = 15;
+
+// code_item
+export interface DexCode {
+    registersSize: number;  // u2    方法寄存器数量
+    insSize: number;        // u2    方法参数数量
+    outsSize: number;       // u2    方法返回值数量
+    triesSize: number;      // u2    方法 try-catch 异常处理数量
+    debugInfoOff: number;   // u4    调试信息偏移量
+    insnsSize: number;      // u4    指令数量
+    insns: Uint16Array;     // u2[]  指令
+
+    /* followed by optional u2 padding  仅当 triesSize>0 且 insnsSize 为奇数时存在 */
+
+    tries: DexTry[];                            // followed by try_item[triesSize]
+    handlersSize: number;                       // followed by uleb128 handlersSize (encoded_catch_handler_list.size)
+    catchHandlers: DexEncodedCatchHandler[];    // followed by encoded_catch_handler[handlersSize]
+}
+
+
 // https://android.googlesource.com/platform/dalvik/+/refs/tags/android-4.4.4_r2.0.1/libdex/DexClass.h#28
 
-/* expanded form of a class_data_item header */
+/* class_data_item header */
 export interface DexClassDataHeader {
-    staticFieldsSize: number;   // u4
-    instanceFieldsSize: number; // u4
-    directMethodsSize: number;  // u4
-    virtualMethodsSize: number; // u4
+    staticFieldsSize: number;   // u4  静态字段数量
+    instanceFieldsSize: number; // u4  实例字段数量
+    directMethodsSize: number;  // u4  直接方法数量
+    virtualMethodsSize: number; // u4  虚拟方法数量
 }
 
-/* expanded form of encoded_field */
+/* encoded_field */
 export interface DexField {
-    fieldIdx: number;    /* u4 index to a field_id_item */
-    accessFlags: number; /* u4 */
+    fieldIdx: number;    // u4  字段索引
+    accessFlags: number; // u4  访问标志
 }
 
-/* expanded form of encoded_method */
+/* encoded_method */
 export interface DexMethod {
-    methodIdx: number;    /* u4 index to a method_id_item */
-    accessFlags: number;  /* u4 */
-    codeOff: number;      /* u4 file offset to a code_item */
+    methodIdx: number;    // u4  方法索引
+    accessFlags: number;  // u4  访问标志
+    codeOff: number;      // u4  代码偏移量
 }
 
-/* expanded form of class_data_item */
+/* class_data_item */
 export interface DexClassData {
     header: DexClassDataHeader;
     staticFields: DexField[];
@@ -211,6 +292,38 @@ class ByteBuffer {
         return result;
     }
 
+    readSLeb128(): number {
+        let shift = 0;
+        let result = 0;
+        let tmpPos = this.position;
+        let b = 0;
+
+        while (true) {
+            if (tmpPos >= this.bytes.length) {
+                throw new RangeError("SLEB128 out of range");
+            }
+
+            b = this.bytes[tmpPos++];
+            result |= (b & 0x7f) << shift;
+            shift += 7;
+
+            if ((tmpPos - this.position) > 5) {
+                throw new Error("SLEB128 too large");
+            }
+
+            if ((b & 0x80) === 0) {
+                break;
+            }
+        }
+
+        if (shift < 32 && (b & 0x40) !== 0) {
+            result |= (-1 << shift);
+        }
+
+        this.position = tmpPos;
+        return result;
+    }
+
     readString(len: number): string {
         const array = this.bytes.subarray(this.position, this.position + len);
         this.position += len;
@@ -310,7 +423,7 @@ export class DexFile {
     }
 
     /**
-     * 从字节数组创建 Dexfile 实例。
+     * 从字节数组创建 DexFile 实例。
      */
     static from(bytes: Uint8Array): DexFile {
         return new DexFile(bytes);
@@ -572,5 +685,272 @@ export class DexFile {
             directMethods: directMethods,
             virtualMethods: virtualMethods
         };
+    }
+
+    getDexCode(dexMethod: DexMethod): DexCode | null {
+        if (dexMethod.codeOff === 0) {
+            return null;
+        }
+
+        const registersSize = this.buffer.setPosition(dexMethod.codeOff).readU16();
+        const insSize = this.buffer.readU16();
+        const outsSize = this.buffer.readU16();
+        const triesSize = this.buffer.readU16();
+        const debugInfoOff = this.buffer.readU32();
+        const insnsSize = this.buffer.readU32();
+
+        const insns = new Uint16Array(insnsSize);
+        for (let i = 0; i < insnsSize; i++) {
+            insns[i] = this.buffer.readU16();
+        }
+
+        if (triesSize > 0 && (insnsSize & 1) !== 0) {
+            this.buffer.skip(2);
+        }
+
+        const tryItems: DexTry[] = [];
+        for (let i = 0; i < triesSize; i++) {
+            tryItems.push({
+                startAddr: this.buffer.readU32(),
+                insnCount: this.buffer.readU16(),
+                handlerOff: this.buffer.readU16(),
+            });
+        }
+
+        const encodedCatchHandlerListStart = this.buffer.getPosition();
+        const handlersSize = triesSize > 0 ? this.buffer.readULeb128() : 0;
+        const catchHandlers: DexEncodedCatchHandler[] = [];
+
+        if (handlersSize > 0) {
+            for (let i = 0; i < handlersSize; i++) {
+                const offset = this.buffer.getPosition() - encodedCatchHandlerListStart;
+                let size = this.buffer.readSLeb128();
+                let catchesAll = false;
+                
+                if (size <= 0) {
+                    catchesAll = true;
+                    size = -size;
+                }
+
+                const handlers: DexTypeAddrPair[] = [];
+                for (let j = 0; j < size; j++) {
+                    const typeIdx = this.buffer.readULeb128();
+                    const address = this.buffer.readULeb128();
+                    handlers.push({ typeIdx, address });
+                }
+
+                const catchAllAddr = catchesAll ? this.buffer.readULeb128() : null;
+
+                catchHandlers.push({
+                    offset,
+                    catchesAll,
+                    handlers,
+                    catchAllAddr,
+                });
+            }
+        }
+
+        return {
+            registersSize,
+            insSize,
+            outsSize,
+            triesSize,
+            debugInfoOff,
+            insnsSize,
+            insns,
+            tries: tryItems,
+            handlersSize,
+            catchHandlers
+        }
+    }
+
+    getDexDebugInfo(dexCode: DexCode): DexDebugInfo {
+        if (dexCode.debugInfoOff === 0) {
+            return {
+                lineStart: 0,
+                parametersSize: 0,
+                parameterNames: [],
+                positions: [],
+                locals: [],
+                sourceFile: null,
+                prologueEndAddresses: [],
+                epilogueBeginAddresses: []
+            };
+        }
+
+        const readStringIdx = (): string | null => {
+            const stringIdx = this.buffer.readULeb128();
+            if (stringIdx === 0) {
+                return null;
+            }
+            const savedPos = this.buffer.getPosition();
+            const val = this.getStringById(stringIdx - 1);
+            this.buffer.setPosition(savedPos);
+            return val;
+        };
+
+        const readTypeIdx = (): string | null => {
+            const typeIdx = this.buffer.readULeb128();
+            if (typeIdx === 0) {
+                return null;
+            }
+            const savedPos = this.buffer.getPosition();
+            const val = this.getTypeDescriptorByIdx(typeIdx - 1);
+            this.buffer.setPosition(savedPos);
+            return val;
+        };
+
+        this.buffer.setPosition(dexCode.debugInfoOff);
+        const lineStart = this.buffer.readULeb128();
+        const parametersSize = this.buffer.readULeb128();
+
+        const parameterNames: Array<string | null> = [];
+        for (let i = 0; i < parametersSize; i++) {
+            parameterNames.push(readStringIdx());
+        }
+
+        const positions: DexDebugPosition[] = [];
+        const locals: DexDebugLocal[] = [];
+
+        type LocalInfo = {
+            name: string | null;
+            descriptor: string | null;
+            signature: string | null;
+            startAddress: number;
+            live: boolean;
+        };
+
+        const localInReg: LocalInfo[] = new Array(dexCode.registersSize);
+        for (let i = 0; i < localInReg.length; i++) {
+            localInReg[i] = { name: null, descriptor: null, signature: null, startAddress: 0, live: false };
+        }
+
+        const emitLocalIfLive = (reg: number, endAddress: number) => {
+            const info = localInReg[reg];
+            if (info.live) {
+                locals.push({
+                    reg,
+                    startAddress: info.startAddress,
+                    endAddress,
+                    name: info.name,
+                    descriptor: info.descriptor,
+                    signature: info.signature
+                });
+            }
+        };
+
+        let address = 0;
+        let line = lineStart;
+        let sourceFile: string | null = null;
+        const prologueEndAddresses: number[] = [];
+        const epilogueBeginAddresses: number[] = [];
+
+        const finalize = (): DexDebugInfo => {
+            locals.sort((a, b) => {
+                if (a.endAddress !== b.endAddress) return a.endAddress - b.endAddress;
+                return a.reg - b.reg;
+            });
+            return {
+                lineStart,
+                parametersSize,
+                parameterNames,
+                positions,
+                locals,
+                sourceFile,
+                prologueEndAddresses,
+                epilogueBeginAddresses
+            };
+        };
+
+        for (;;) {
+            const opcode = this.buffer.readU8();
+
+            switch (opcode) {
+                case DexDebugOpcode.EndSequence: {
+                    for (let reg = 0; reg < dexCode.registersSize; reg++) {
+                        emitLocalIfLive(reg, dexCode.insnsSize);
+                    }
+                    return finalize();
+                }
+
+                case DexDebugOpcode.AdvancePc:
+                    address += this.buffer.readULeb128();
+                    break;
+
+                case DexDebugOpcode.AdvanceLine:
+                    line += this.buffer.readSLeb128();
+                    break;
+
+                case DexDebugOpcode.StartLocal:
+                case DexDebugOpcode.StartLocalExtended: {
+                    const reg = this.buffer.readULeb128();
+                    if (reg >= dexCode.registersSize) {
+                        for (let r = 0; r < dexCode.registersSize; r++) {
+                            emitLocalIfLive(r, dexCode.insnsSize);
+                        }
+                        return finalize();
+                    }
+
+                    emitLocalIfLive(reg, address);
+
+                    localInReg[reg].name = readStringIdx();
+                    localInReg[reg].descriptor = readTypeIdx();
+                    localInReg[reg].signature = opcode === DexDebugOpcode.StartLocalExtended ? readStringIdx() : null;
+                    localInReg[reg].startAddress = address;
+                    localInReg[reg].live = true;
+                    break;
+                }
+
+                case DexDebugOpcode.EndLocal: {
+                    const reg = this.buffer.readULeb128();
+                    if (reg < dexCode.registersSize) {
+                        emitLocalIfLive(reg, address);
+                        localInReg[reg].live = false;
+                    }
+                    break;
+                }
+
+                case DexDebugOpcode.RestartLocal: {
+                    const reg = this.buffer.readULeb128();
+                    if (reg >= dexCode.registersSize) {
+                        throw new Error(`Invalid debug info stream: DBG_RESTART_LOCAL reg out of range: ${reg}`);
+                    }
+
+                    if (localInReg[reg].name == null || localInReg[reg].descriptor == null) {
+                        throw new Error(`Invalid debug info stream: DBG_RESTART_LOCAL without prior START_LOCAL for reg ${reg}`);
+                    }
+
+                    if (!localInReg[reg].live) {
+                        localInReg[reg].startAddress = address;
+                        localInReg[reg].live = true;
+                    }
+                    break;
+                }
+
+                case DexDebugOpcode.SetPrologueEnd:
+                    prologueEndAddresses.push(address);
+                    break;
+
+                case DexDebugOpcode.SetEpilogueBegin:
+                    epilogueBeginAddresses.push(address);
+                    break;
+
+                case DexDebugOpcode.SetFile:
+                    sourceFile = readStringIdx();
+                    break;
+
+                default: {
+                    const adjopcode = opcode - DexDebugOpcode.FirstSpecial;
+                    if (adjopcode < 0) {
+                        break;
+                    }
+
+                    address += Math.floor(adjopcode / DBG_LINE_RANGE);
+                    line += DBG_LINE_BASE + (adjopcode % DBG_LINE_RANGE);
+                    positions.push({ address, line });
+                    break;
+                }
+            }
+        }
     }
 }

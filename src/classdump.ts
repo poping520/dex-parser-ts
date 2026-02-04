@@ -18,7 +18,7 @@ export class DexClassDumper {
         parts.push(keyword);
         parts.push(javaClass.name);
 
-        const ifaces = (javaClass.interfaces ?? [])
+        const ifaces = javaClass.interfaces
             .map((i) => this.typeRefToName(i))
             .filter((s) => s && s.length > 0);
 
@@ -43,20 +43,18 @@ export class DexClassDumper {
             }
         }
 
-        const fieldLines = (javaClass.fields ?? [])
-            .filter((f) => !!f)
+        const fieldLines = javaClass.fields
             .map((f) => `    ${this.dumpField(f)};`);
         if (fieldLines.length === 0) {
             return `${parts.join(" ")} { }`;
         }
-        const methodLines = (javaClass.methods ?? [])
-            .filter((m) => !!m)
+        const methodLines = javaClass.methods
             .map((m) => `\n    ${this.dumpMethod(m, javaClass.name)}`);
 
         const bodyLines = [...fieldLines, ...methodLines];
         return `${parts.join(" ")} {\n${bodyLines.join("\n")}\n}`;
     }
-    
+
     private static dumpField(field: JavaFieldRaw | any): string {
         const mod = DexUtils.accessFlagsToJavaModifierString(field.accessFlags, "field");
         const t = this.typeRefToName(field.type);
@@ -70,7 +68,7 @@ export class DexClassDumper {
 
         const isAbstract = (method.accessFlags & DexAccessFlag.Abstract) !== 0;
         const isNative = (method.accessFlags & DexAccessFlag.Native) !== 0;
-        const params = (method.parameterTypes ?? [])
+        const params = method.parameterTypes
             .map((t: JavaType, i: number) => `${this.typeRefToName(t)} arg${i}`);
 
         if (method.name === "<init>") {
@@ -107,7 +105,7 @@ export class DexClassDumper {
         return `${head} { }`;
     }
 
-    private static typeRefToName(typeRef?: JavaType): string {
+    private static typeRefToName(typeRef: JavaType): string {
         if (!typeRef) {
             return "";
         }

@@ -6,6 +6,7 @@ export interface JavaMethodT<TType> {
     name: string;
     returnType: TType;
     parameterTypes: TType[];
+    dexMethod: DexMethod;
 }
 
 export interface JavaFieldT<TType> {
@@ -46,7 +47,7 @@ export class DexClassLoader {
     private readonly resolvedClassCache = new Map<string, JavaClassResolved | null>();
 
     /**
-     * 创建一个基于 Dexfile 的类加载器（带缓存）。
+     * 创建一个基于 DexFile 的类加载器（带缓存）。
      */
     constructor(dexFile: DexFile) {
         this.dexFile = dexFile;
@@ -160,7 +161,8 @@ export class DexClassLoader {
             accessFlags: m.accessFlags,
             name: m.name,
             returnType: this.resolveTypeRef(m.returnType),
-            parameterTypes: m.parameterTypes.map((p) => this.resolveTypeRef(p))
+            parameterTypes: m.parameterTypes.map((p) => this.resolveTypeRef(p)),
+            dexMethod: m.dexMethod
         }));
 
         return resolved;
@@ -183,8 +185,8 @@ export class DexClassLoader {
 
     private parseDexMethods(dexMethods: DexMethod[], out: JavaMethodRaw[]): void {
         let methodIdx = 0;
-        for (const dm of dexMethods) {
-            methodIdx += dm.methodIdx;
+        for (const dexMethod of dexMethods) {
+            methodIdx += dexMethod.methodIdx;
             const methodId = this.dexFile.getMethodId(methodIdx);
             const name = this.dexFile.getStringById(methodId.nameIdx);
 
@@ -203,10 +205,11 @@ export class DexClassLoader {
             }
 
             out.push({
-                accessFlags: dm.accessFlags,
+                accessFlags: dexMethod.accessFlags,
                 name,
                 returnType,
-                parameterTypes
+                parameterTypes,
+                dexMethod
             });
         }
     }
@@ -225,6 +228,7 @@ export class DexClassLoader {
         let ret = this.findClassResolved(className);
 
         if (ret == null) {
+            // Create stub class
             ret = {
                 stub: true,
                 accessFlags: 0,
@@ -239,5 +243,3 @@ export class DexClassLoader {
         return ret;
     }
 }
-
-
